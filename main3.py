@@ -142,6 +142,7 @@ class NewsBundle(BaseModel):
     items: List[NewsItem]
 
 
+
 # ----------------------------
 # Text normalization helper
 # ----------------------------
@@ -170,6 +171,20 @@ def normalize_text(s: str) -> str:
     s = re.sub(r"\s+", " ", s).strip()
 
     return s
+
+URL_REGEX = re.compile(r"(https?://\S+|www\.\S+)", re.IGNORECASE)
+
+def strip_urls(text: str) -> str:
+    """
+    Remove raw URLs like https://..., http://..., and www.... from text.
+    Also collapses extra whitespace afterwards.
+    """
+    if not text:
+        return text
+    text = URL_REGEX.sub("", text)
+    # Clean up extra spaces created by removals
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
 
 
 # ----------------------------
@@ -524,8 +539,12 @@ def fetch_ai_news(
         try:
             content = resp.output[0].content[0].text
         except Exception:
-            raise RuntimeError(
-                "Unexpected Responses payload; upgrade SDK or include output_text in response."
+            raise RuntimeError("Unexpected Responses payload when generating voiceover script.")
+
+    # Remove any URLs that might still be present
+    cleaned = strip_urls(content.strip())
+    return cleaned
+
             )
     #
     try:
