@@ -142,7 +142,6 @@ class NewsBundle(BaseModel):
     items: List[NewsItem]
 
 
-
 # ----------------------------
 # Text normalization helper
 # ----------------------------
@@ -539,12 +538,8 @@ def fetch_ai_news(
         try:
             content = resp.output[0].content[0].text
         except Exception:
-            raise RuntimeError("Unexpected Responses payload when generating voiceover script.")
-
-    # Remove any URLs that might still be present
-    cleaned = strip_urls(content.strip())
-    return cleaned
-
+            raise RuntimeError(
+                "Unexpected Responses payload; upgrade SDK or include output_text in response."
             )
     #
     try:
@@ -920,7 +915,11 @@ SCRIPT REQUIREMENTS
             content = resp.output[0].content[0].text
         except Exception:
             raise RuntimeError("Unexpected Responses payload when generating voiceover script.")
-    return content.strip()
+
+    # Remove any URLs that might still be present
+    cleaned = strip_urls(content.strip())
+    return cleaned
+
 
 
 def newsletter_markdown_to_audio_script(
