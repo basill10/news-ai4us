@@ -800,12 +800,21 @@ def generate_voiceover_script(
     target_duration_minutes: int = 5,
 ) -> str:
     """
-    Use the LLM + web_search to research the story and write a ~5-minute
-    conversational voiceover script, using news.md (1. and 2.) as one-shot
-    examples for tone and style.
+    Use the LLM + web_search to research the story and write a conversational
+    voiceover script, using news.md (1. and 2.) as one-shot examples for tone
+    and style.
 
-    Output: plain text, no markdown, suitable for reading aloud.
+    The script is designed to be no longer than `target_duration_minutes`
+    of spoken audio. We assume ~130–140 words per minute and enforce a hard
+    maximum word count based on this.
     """
+
+    # Approximate words-per-minute and target ranges
+    approx_wpm = 135  # conservative so we don't exceed the time
+    target_words = target_duration_minutes * approx_wpm
+    lower_bound = int(target_words * 0.75)
+    upper_bound = int(target_words * 0.95)
+    hard_max = int(target_words)  # absolute cap; we will truncate beyond this
 
     # Load one-shot audio/voiceover examples if available
     news_voiceover_examples = _read_markdown_example("news.md")
@@ -815,7 +824,10 @@ def generate_voiceover_script(
         "You write clear, engaging, spoken scripts about AI stories for a general audience. "
         "Your tone is friendly, confident, and calm – like a host on a popular tech news channel. "
         "You should speak directly to the viewer, use short sentences, and keep jargon to a minimum. "
-        "You will write a script that takes about 5 minutes to read aloud (roughly 700–950 words)."
+        f"You will write a script that takes about {target_duration_minutes} minutes to read aloud. "
+        f"Assume roughly {approx_wpm} words per minute. "
+        f"Your script MUST stay between {lower_bound} and {upper_bound} words, and MUST NOT exceed {hard_max} words. "
+        "Once you reach the word limit, you MUST stop writing and end your script cleanly."
     )
 
     # Base metadata section
@@ -857,7 +869,7 @@ Topics / tags: {", ".join(news_item.topics)}
     user_prompt_parts.append(metadata_block)
 
     user_prompt_parts.append(
-        """
+        f"""
 RESEARCH INSTRUCTIONS (IMPORTANT)
 ---------------------------------
 1. Use the web_search tool to find:
@@ -871,8 +883,10 @@ RESEARCH INSTRUCTIONS (IMPORTANT)
 
 SCRIPT REQUIREMENTS
 -------------------
-- Length: Aim for a script that takes about 5 minutes to read aloud.
-  *This typically means between 700 and 950 words. Do NOT go above 1000 words.*
+- Length:
+  - Aim for a script that takes about {target_duration_minutes} minutes to read aloud.
+  - This should be between {lower_bound} and {upper_bound} words.
+  - You MUST NOT go above {hard_max} words under any circumstance.
 - Output: Plain text only (no markdown, no bullets, no headings).
 - Voice: Speak in first-person plural or second person, e.g. "Today we're looking at...", "You might be wondering...".
 - Structure:
@@ -884,6 +898,8 @@ SCRIPT REQUIREMENTS
   - Use short, clear sentences.
   - Explain any technical term in simple language.
   - Include 2–4 concrete examples of how this affects real people or businesses.
+- IMPORTANT: As you write, keep the word limit in mind. Do NOT exceed it. If you are close to the limit,
+  wrap up the current idea and end the script cleanly.
 """
     )
 
@@ -916,8 +932,24 @@ SCRIPT REQUIREMENTS
         except Exception:
             raise RuntimeError("Unexpected Responses payload when generating voiceover script.")
 
+    raw_script = content.strip()
+
+    # --- HARD POST-PROCESS WORD CAP ENFORCEMENT ---
+    words = raw_script.split()
+    if len(words) > hard_max:
+        # Truncate to the hard_max words
+        truncated_text = " ".join(words[:hard_max])
+
+        # Try to cut back to the last full sentence for a cleaner ending
+        # (look for the last '.', '!' or '?' in the truncated text)
+        match = re.findall(r"(.+[\.!?])", truncated_text)
+        if match:
+            truncated_text = match[-1].strip()
+
+        raw_script = truncated_text
+
     # Remove any URLs that might still be present
-    cleaned = strip_urls(content.strip())
+    cleaned = strip_urls(raw_script.strip())
     return cleaned
 
 
