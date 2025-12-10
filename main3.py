@@ -171,7 +171,9 @@ def normalize_text(s: str) -> str:
 
     return s
 
+
 URL_REGEX = re.compile(r"(https?://\S+|www\.\S+)", re.IGNORECASE)
+
 
 def strip_urls(text: str) -> str:
     """
@@ -184,6 +186,51 @@ def strip_urls(text: str) -> str:
     # Clean up extra spaces created by removals
     text = re.sub(r"\s+", " ", text).strip()
     return text
+
+
+def build_combined_voiceover_script(
+    bundle: NewsBundle,
+    indices: List[int],
+    per_story_scripts: Dict[int, str],
+) -> str:
+    """
+    Build a single, seamless voiceover that covers multiple stories in one go.
+
+    We reuse the per-story scripts but add light transitions between them so it
+    feels like one continuous show.
+    """
+    # Keep only indices that actually have scripts
+    indices = [i for i in indices if i in per_story_scripts]
+    if not indices:
+        return ""
+
+    parts: List[str] = []
+    parts.append(
+        "Welcome back to AI News of the Week from Caravan Media. "
+        "Today we're breaking down some of the most interesting AI stories."
+    )
+
+    for n, i in enumerate(indices):
+        item = bundle.items[i]
+        title = normalize_text(item.title)
+        script = per_story_scripts[i].strip()
+
+        if n == 0:
+            parts.append(f"\n\nFirst up, {title}.")
+        else:
+            parts.append(f"\n\nNext, let's talk about {title}.")
+
+        # Add the per-story script
+        parts.append("\n" + script)
+
+    parts.append(
+        "\n\nAnd that's it for this week's AI roundup. "
+        "Thanks for listening, and we'll see you in the next update."
+    )
+
+    combined = "\n".join(parts)
+    combined = strip_urls(combined)
+    return combined.strip()
 
 
 # ----------------------------
@@ -655,8 +702,7 @@ Voiceover script:
             + voiceover_script
             + """
 """
-)
-
+        )
 
     user_prompt_parts.append(
         """
@@ -681,7 +727,7 @@ Voiceover script:
 
     if newsletter_example:
         user_prompt_parts.append(
-        """
+            """
         STYLE & STRUCTURE EXAMPLE (ONE-SHOT)
 
         Below is an example newsletter from newsletter.md that shows the exact structure and tone to follow:
@@ -689,8 +735,8 @@ Voiceover script:
         markdown
         Copy code
         """
-                    + newsletter_example
-                    + """
+            + newsletter_example
+            + """
         Pay close attention to:
 
         The clear title.
@@ -704,7 +750,7 @@ Voiceover script:
         )
 
     user_prompt_parts.append(
-    f"""
+        f"""
     WRITING TASK
 
     Write a fully polished newsletter article in MARKDOWN, no more than {target_words} words.
@@ -766,23 +812,23 @@ Voiceover script:
     user_prompt = "\n\n".join(user_prompt_parts)
 
     tools = [
-    {
-    "type": "web_search",
-    "search_context_size": "high",
-    "user_location": {"type": "approximate", "country": "US"},
-    }
+        {
+            "type": "web_search",
+            "search_context_size": "high",
+            "user_location": {"type": "approximate", "country": "US"},
+        }
     ]
 
     resp = client.responses.create(
-    model=model,
-    input=[
-    {"role": "system", "content": system_prompt},
-    {"role": "user", "content": user_prompt},
-    ],
-    tools=tools,
-    text={"format": {"type": "text"}},
-    reasoning={"effort": "medium"},
-    store=False,
+        model=model,
+        input=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        tools=tools,
+        text={"format": {"type": "text"}},
+        reasoning={"effort": "medium"},
+        store=False,
     )
 
     content = getattr(resp, "output_text", None)
@@ -792,6 +838,7 @@ Voiceover script:
         except Exception:
             raise RuntimeError("Unexpected Responses payload when generating newsletter.")
     return content
+
 
 def generate_voiceover_script(
     client: OpenAI,
@@ -974,13 +1021,11 @@ SCRIPT REQUIREMENTS
     return cleaned
 
 
-
-
 def newsletter_markdown_to_audio_script(
     client: OpenAI,
     model: str,
     newsletter_markdown: str,
-    ) -> str:
+) -> str:
     """
     Convert the markdown newsletter into a smooth, conversational audio script.
     The original markdown stays as-is for reading; this is only for TTS.
@@ -1057,8 +1102,6 @@ def newsletter_markdown_to_audio_script(
     return content.strip()
 
 
-
-
 def build_openai_client(explicit_key: Optional[str] = None) -> OpenAI:
     """
     Build an OpenAI client, resolving the API key from:
@@ -1123,6 +1166,8 @@ def require_login(st) -> bool:
                     "active_newsletter_idx",
                     "newsletter_audio",
                     "newsletter_audio_script",
+                    "combined_voiceover_script",
+                    "combined_voiceover_audio",
                     "eleven_voices",
                     "eleven_voices_key",
                 ]:
@@ -1155,10 +1200,6 @@ def require_login(st) -> bool:
 
     # Stop app execution until user logs in
     st.stop()
-
-
-
-
 
 
 def streamlit_main() -> None:
@@ -1244,19 +1285,21 @@ def streamlit_main() -> None:
     if "active_newsletter_idx" not in st.session_state:
         st.session_state["active_newsletter_idx"] = None
 
-    
-
     if "newsletter_audio" not in st.session_state:
-        st.session_state["newsletter_audio"] = {}  
+        st.session_state["newsletter_audio"] = {}
 
     if "newsletter_audio_script" not in st.session_state:
-        st.session_state["newsletter_audio_script"] = {}  
-
-
+        st.session_state["newsletter_audio_script"] = {}
 
     if "eleven_voices" not in st.session_state:
         st.session_state["eleven_voices"] = None
         st.session_state["eleven_voices_key"] = None
+
+    # NEW: combined multi-story voiceover
+    if "combined_voiceover_script" not in st.session_state:
+        st.session_state["combined_voiceover_script"] = None
+    if "combined_voiceover_audio" not in st.session_state:
+        st.session_state["combined_voiceover_audio"] = None
 
     # Button: start news fetching
     if fetch_btn:
@@ -1294,6 +1337,8 @@ def streamlit_main() -> None:
             st.session_state["active_newsletter_idx"] = None
             st.session_state["newsletter_audio"] = {}
             st.session_state["newsletter_audio_script"] = {}
+            st.session_state["combined_voiceover_script"] = None
+            st.session_state["combined_voiceover_audio"] = None
 
             # Clear any selection checkboxes from previous runs
             for key in list(st.session_state.keys()):
@@ -1356,9 +1401,8 @@ def streamlit_main() -> None:
             ):
                 client = build_openai_client()
 
-                #
                 def _gen_for_idx(i: int) -> tuple[str, str]:
-                    # 1) Generate a ~5-min voiceover script first
+                    # 1) Generate a ~1.5-min voiceover script first
                     script = generate_voiceover_script(
                         client=client,
                         model=model,
@@ -1397,6 +1441,21 @@ def streamlit_main() -> None:
                 st.session_state["newsletters"].update(new_newsletters)
                 st.session_state["newsletter_audio_script"].update(new_scripts)
 
+                # NEW: Build a combined multi-story voiceover script
+                try:
+                    all_scripts: Dict[int, str] = (
+                        st.session_state.get("newsletter_audio_script", {}) or {}
+                    )
+                    combined_script = build_combined_voiceover_script(
+                        bundle=bundle,
+                        indices=selected_indices,
+                        per_story_scripts=all_scripts,
+                    )
+                    if combined_script:
+                        st.session_state["combined_voiceover_script"] = combined_script
+                        st.session_state["combined_voiceover_audio"] = None
+                except Exception as e:
+                    st.warning(f"Could not build combined voiceover script: {e}")
 
                 # If no active newsletter yet, pick the first one generated
                 if (
@@ -1426,7 +1485,99 @@ def streamlit_main() -> None:
         st.markdown("---")
         st.subheader("📣 Generated Newsletter Articles")
 
-        # Build options for selectbox
+        # ---------------------------------------
+        # Combined multi-story voiceover section
+        # ---------------------------------------
+        combined_script = st.session_state.get("combined_voiceover_script")
+        if combined_script:
+            st.markdown("#### 🎙️ Combined voiceover for selected stories")
+
+            st.text_area(
+                "Combined video script (one continuous narration for all selected stories):",
+                value=combined_script,
+                height=250,
+            )
+
+            st.download_button(
+                "⬇️ Download combined script (Text)",
+                data=combined_script,
+                file_name="combined_ai_news_script.txt",
+                mime="text/plain",
+            )
+
+            st.markdown("##### 🔊 Generate combined audio (ElevenLabs)")
+
+            effective_eleven_key = get_elevenlabs_api_key()
+
+            if not effective_eleven_key:
+                st.info(
+                    "To generate audio, set ELEVENLABS_API_KEY in Streamlit "
+                    "secrets or as an environment variable."
+                )
+            else:
+                # Load voices once per API key (reuse same cache as per-story audio)
+                if (
+                    st.session_state.get("eleven_voices") is None
+                    or st.session_state.get("eleven_voices_key") != effective_eleven_key
+                ):
+                    try:
+                        voices = elevenlabs_list_voices(effective_eleven_key)
+                        st.session_state["eleven_voices"] = voices
+                        st.session_state["eleven_voices_key"] = effective_eleven_key
+                    except Exception as e:
+                        st.error(f"Failed to load ElevenLabs voices: {e}")
+                        voices = []
+                else:
+                    voices = st.session_state.get("eleven_voices") or []
+
+                if not voices:
+                    st.warning("No ElevenLabs voices found for this API key.")
+                else:
+                    options: List[tuple[str, str]] = []
+                    for v in voices:
+                        voice_id = v.get("voice_id")
+                        if not voice_id:
+                            continue
+                        name = v.get("name") or voice_id
+                        category = v.get("category") or ""
+                        label = f"{name} ({category})" if category else name
+                        options.append((label, voice_id))
+
+                    labels_voice = [lbl for (lbl, _vid) in options]
+                    if labels_voice:
+                        selected_label_combined = st.selectbox(
+                            "Choose a voice for the combined audio",
+                            labels_voice,
+                            key="eleven_voice_select_combined",
+                        )
+                        selected_voice_id_combined = dict(options)[selected_label_combined]
+
+                        if st.button("🎧 Generate combined audio (MP3)"):
+                            with st.spinner("Generating combined audio with ElevenLabs..."):
+                                try:
+                                    audio_bytes = elevenlabs_tts(
+                                        effective_eleven_key,
+                                        selected_voice_id_combined,
+                                        combined_script,
+                                    )
+                                    st.session_state["combined_voiceover_audio"] = audio_bytes
+                                except Exception as e:
+                                    st.error(f"Failed to generate combined audio: {e}")
+
+            # If combined audio exists, show player + download
+            if st.session_state.get("combined_voiceover_audio") is not None:
+                st.audio(
+                    st.session_state["combined_voiceover_audio"],
+                    format="audio/mpeg",
+                )
+                st.download_button(
+                    "⬇️ Download combined audio (MP3)",
+                    data=st.session_state["combined_voiceover_audio"],
+                    file_name="combined_ai_news_voiceover.mp3",
+                    mime="audio/mpeg",
+                )
+
+        # Build options for per-story selectbox
         sorted_indices = sorted(newsletters.keys())
         label_map = {
             i: f"{i + 1}. {bundle.items[i].title}" for i in sorted_indices
@@ -1459,7 +1610,6 @@ def streamlit_main() -> None:
             active_idx = chosen_idx
 
         # Display the active newsletter
-        ##
         if active_idx is not None:
             st.markdown(
                 f"*Based on story #{active_idx + 1}: "
@@ -1502,9 +1652,8 @@ def streamlit_main() -> None:
                     mime="text/plain",
                 )
 
-
             # ----------------------------
-            # Audio generation with ElevenLabs
+            # Per-story Audio generation with ElevenLabs
             # ----------------------------
             st.markdown("### 🔊 Audio version (ElevenLabs)")
 
@@ -1560,13 +1709,12 @@ def streamlit_main() -> None:
                         )
                         selected_voice_id = dict(options)[selected_label]
 
-                        #
                         if st.button("🎧 Generate audio for this newsletter"):
                             with st.spinner(
                                 "Generating audio from the pre-written voiceover script..."
                             ):
                                 try:
-                                    # Prefer the pre-generated 5-minute voiceover script
+                                    # Prefer the pre-generated 1.5-minute voiceover script
                                     script_map: Dict[int, str] = st.session_state.get(
                                         "newsletter_audio_script", {}
                                     )
@@ -1593,7 +1741,6 @@ def streamlit_main() -> None:
                                     st.error(f"Failed to generate audio: {e}")
                                 else:
                                     st.session_state["newsletter_audio"][active_idx] = audio_bytes
-
 
             # If audio present for this story, show player & download
             audio_map: Dict[int, bytes] = st.session_state.get(
