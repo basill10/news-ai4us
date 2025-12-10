@@ -797,7 +797,7 @@ def generate_voiceover_script(
     client: OpenAI,
     model: str,
     news_item: NewsItem,
-    target_duration_minutes: int = 5,
+    target_duration_minutes: float = 1.5,
 ) -> str:
     """
     Use the LLM + web_search to research the story and write a conversational
@@ -807,27 +807,33 @@ def generate_voiceover_script(
     The script is designed to be no longer than `target_duration_minutes`
     of spoken audio. We assume ~130–140 words per minute and enforce a hard
     maximum word count based on this.
+
+    For this app we default to ~1.5 minutes per story so it's short, concise,
+    and to the point. Each script must:
+      - Start with a solution-oriented hook.
+      - Be quick, practical, and focused on what the viewer walks away with.
     """
 
     # Approximate words-per-minute and target ranges
     approx_wpm = 135  # conservative so we don't exceed the time
-    target_words = target_duration_minutes * approx_wpm
+    target_words = int(target_duration_minutes * approx_wpm)
     lower_bound = int(target_words * 0.75)
     upper_bound = int(target_words * 0.95)
-    hard_max = int(target_words)  # absolute cap; we will truncate beyond this
+    hard_max = target_words  # absolute cap; we will truncate beyond this
 
     # Load one-shot audio/voiceover examples if available
     news_voiceover_examples = _read_markdown_example("news.md")
 
     system_prompt = (
         "You are a YouTube-style AI news presenter. "
-        "You write clear, engaging, spoken scripts about AI stories for a general audience. "
+        "You write short, punchy, spoken scripts about AI stories for a general audience. "
         "Your tone is friendly, confident, and calm – like a host on a popular tech news channel. "
         "You should speak directly to the viewer, use short sentences, and keep jargon to a minimum. "
         f"You will write a script that takes about {target_duration_minutes} minutes to read aloud. "
         f"Assume roughly {approx_wpm} words per minute. "
         f"Your script MUST stay between {lower_bound} and {upper_bound} words, and MUST NOT exceed {hard_max} words. "
-        "Once you reach the word limit, you MUST stop writing and end your script cleanly."
+        "Once you reach the word limit, you MUST stop writing and end your script cleanly. "
+        "Always prioritise clarity, brevity, and practical takeaways over long explanations."
     )
 
     # Base metadata section
@@ -846,6 +852,7 @@ def generate_voiceover_script(
             "- Smooth transitions between sections.\n"
             "- Short, easy-to-read sentences.\n"
             "- Light hooks and signposting, but no over-the-top hype.\n"
+            "- Keep it tight and focused; no rambling.\n"
         )
 
     metadata_block = f"""
@@ -887,19 +894,37 @@ SCRIPT REQUIREMENTS
   - Aim for a script that takes about {target_duration_minutes} minutes to read aloud.
   - This should be between {lower_bound} and {upper_bound} words.
   - You MUST NOT go above {hard_max} words under any circumstance.
-- Output: Plain text only (no markdown, no bullets, no headings).
-- Voice: Speak in first-person plural or second person, e.g. "Today we're looking at...", "You might be wondering...".
+
+- Output:
+  - Plain text only (no markdown, no bullets, no headings).
+
+- Voice:
+  - Speak in first-person plural or second person, e.g. "Today we're looking at...", "You might be wondering...".
+  - Sound like a calm, confident YouTube news host.
+
 - Structure:
-  - Start with a short hook that clearly states what the story is about.
-  - Then explain what happened, who is involved, and any key context.
-  - Use smooth transitions between ideas (e.g., "Now, here's where things get interesting...").
-  - Finish with a clear explanation of why this matters and who should care.
-- Clarity:
+  1) Start with a short **solution hook** (1–2 sentences):
+     - Directly tell the viewer what problem this news helps them solve
+       or what new ability they'll walk away with.
+     - Example: "By the end of this video, you'll know how to use X to save time on Y."
+  2) Briefly explain what happened and who is involved.
+  3) Give 1–2 concrete, practical examples of how this affects real people or businesses.
+  4) Finish with a clear takeaway:
+     - What should the viewer remember?
+     - What can they try or watch out for in the next 6–12 months?
+
+- Clarity & Style:
   - Use short, clear sentences.
   - Explain any technical term in simple language.
-  - Include 2–4 concrete examples of how this affects real people or businesses.
-- IMPORTANT: As you write, keep the word limit in mind. Do NOT exceed it. If you are close to the limit,
-  wrap up the current idea and end the script cleanly.
+  - Be concise: no filler, no long tangents, no repeating the same idea.
+  - Every line should either:
+    - Explain what happened,
+    - Show how it impacts the viewer,
+    - Or guide them to a simple next step or mindset.
+
+- IMPORTANT:
+  - As you write, keep the word limit in mind. Do NOT exceed it.
+  - If you are close to the limit, wrap up the current idea and end the script cleanly with a takeaway.
 """
     )
 
@@ -951,6 +976,7 @@ SCRIPT REQUIREMENTS
     # Remove any URLs that might still be present
     cleaned = strip_urls(raw_script.strip())
     return cleaned
+
 
 
 
