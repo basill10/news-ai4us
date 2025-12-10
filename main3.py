@@ -810,7 +810,7 @@ def generate_voiceover_script(
 
     For this app we default to ~1.5 minutes per story so it's short, concise,
     and to the point. Each script must:
-      - Start with a hook.
+      - Start with a hook, 
       - Be quick, practical, and focused on what the viewer walks away with.
     """
 
@@ -832,7 +832,6 @@ def generate_voiceover_script(
         f"You will write a script that takes about {target_duration_minutes} minutes to read aloud. "
         f"Assume roughly {approx_wpm} words per minute. "
         f"Your script MUST stay between {lower_bound} and {upper_bound} words, and MUST NOT exceed {hard_max} words. "
-        "Once you reach the word limit, you MUST stop writing and end your script cleanly. "
         "Always prioritise clarity, brevity, and practical takeaways over long explanations."
     )
 
@@ -904,9 +903,6 @@ SCRIPT REQUIREMENTS
 
 - Structure:
   1) Start with a short **hook** (1–2 sentences):
-     - Directly tell the viewer what problem this news helps them solve
-       or what new ability they'll walk away with.
-     - Example: "By the end of this video, you'll know how to use X to save time on Y."
   2) Briefly explain what happened and who is involved.
   3) Give 1–2 concrete, practical examples of how this affects real people or businesses.
   4) Finish with a clear takeaway:
