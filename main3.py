@@ -810,7 +810,7 @@ def generate_voiceover_script(
 
     For this app we default to ~1.5 minutes per story so it's short, concise,
     and to the point. Each script must:
-      - Start with a solution-oriented hook.
+      - Start with a hook.
       - Be quick, practical, and focused on what the viewer walks away with.
     """
 
@@ -903,7 +903,7 @@ SCRIPT REQUIREMENTS
   - Sound like a calm, confident YouTube news host.
 
 - Structure:
-  1) Start with a short **solution hook** (1–2 sentences):
+  1) Start with a short **hook** (1–2 sentences):
      - Directly tell the viewer what problem this news helps them solve
        or what new ability they'll walk away with.
      - Example: "By the end of this video, you'll know how to use X to save time on Y."
